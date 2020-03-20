@@ -123,7 +123,7 @@ def main(name):
 
         #   Falloff (just multiplies the black and white mask by the falloff to make it
         #   look smoother).  Disabling "with_falloff" might make the algorithm more clear.
-        #mask.blit(surf_falloff, (0, 0), special_flags=BLEND_MULT)
+        mask.blit(surf_falloff, (0, 0), special_flags=BLEND_MULT)
 
         #   Ambient light
         surf_lighting.fill((50, 50, 50))
