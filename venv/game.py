@@ -23,7 +23,7 @@ vel = 3
 W, H = 800, 600
 
 AMBIENT_LIGHT = (30,30,30,255)
-COLORS = [(255, 0, 0), (255, 128, 0), (255, 255, 0), (128, 255, 0), (0, 255, 0), (0, 255, 128), (0, 255, 255),
+COLORS = [(255, 128, 0), (255, 255, 0), (255, 0, 0), (128, 255, 0), (0, 255, 0), (0, 255, 128), (0, 255, 255),
           (0, 128, 255), (0, 0, 255), (0, 0, 255), (128, 0, 255), (255, 0, 255), (255, 0, 128), (128, 128, 128),
           (0, 0, 0)]
 
@@ -72,7 +72,6 @@ def draw_players(players, current_id):
 def is_visible(opponent):
     try:
         light_val = surf_lighting.get_at((opponent["x"],opponent["y"]))
-        print(AMBIENT_LIGHT, light_val)
         return light_val != AMBIENT_LIGHT
     except:
         print("ERROR mit lightmap")
@@ -81,15 +80,29 @@ def is_visible(opponent):
 
 def draw_player(player):
     pygame.draw.circle(WIN, player["color"], (player["x"], player["y"]), PLAYER_RADIUS)
-    pygame.draw.line(WIN, (200,200,200), (player["x"], player["y"]), (player["x"]+math.sin(player["direction"]) * PLAYER_RADIUS ,
-                                                                    (player["y"] + math.sin(player["direction"]) * PLAYER_RADIUS,
-                                                                      player["y"]), PLAYER_RADIUS*0.2)
-    # render and draw name for each player
+    pygame.draw.line(WIN, (255,0,0), (player["x"], player["y"]),
+                     (player["x"]+math.cos(player["direction"]) * PLAYER_RADIUS * 1.5, player["y"] + math.sin(player["direction"]) * PLAYER_RADIUS*1.5),
+                     int(PLAYER_RADIUS*0.2))
+
     text = NAME_FONT.render(player["name"], 1, (0, 0, 0))
     WIN.blit(text, (player["x"] - text.get_width() / 2, player["y"] - text.get_height() / 2))
 
 
 def handleInput(player):
+
+    for event in pygame.event.get():
+        # if user hits red x button close window
+        if event.type == pygame.QUIT:
+            run = False
+
+        if event.type == pygame.KEYDOWN:
+            # if user hits a escape key close program
+            if event.key == pygame.K_ESCAPE:
+                run = False
+
+        if event.type == pygame.MOUSEBUTTONUP:
+            pass
+
     keys = pygame.key.get_pressed()
     # movement based on key presses
     if keys[pygame.K_LEFT] or keys[pygame.K_a]:
@@ -107,6 +120,12 @@ def handleInput(player):
     if keys[pygame.K_DOWN] or keys[pygame.K_s]:
         if player["y"] + vel + PLAYER_RADIUS <= H:
             player["y"] = player["y"] + vel
+
+    player_pos = pygame.math.Vector2(player["x"], player["y"])
+    mouse_pos = pygame.math.Vector2(pygame.mouse.get_pos())
+    if player_pos != mouse_pos:
+        dif = mouse_pos - player_pos
+        player["direction"] = math.atan2(dif.y, dif.x)
 
 
 def main(name):
@@ -133,21 +152,10 @@ def main(name):
 
         data = ""
         handleInput(player)
-
-        data = "move " + str(player["x"]) + " " + str(player["y"])
+        data = "move " + str(player["x"]) + " " + str(player["y"]) + " " + str(player["direction"])
 
         # send data to server and recieve back all players information
         players = server.send(data)
-
-        for event in pygame.event.get():
-            # if user hits red x button close window
-            if event.type == pygame.QUIT:
-                run = False
-
-            if event.type == pygame.KEYDOWN:
-                # if user hits a escape key close program
-                if event.key == pygame.K_ESCAPE:
-                    run = False
 
 
         # ======First compute the lighting information======
@@ -170,9 +178,10 @@ def main(name):
         #pygame.image.save(surf_lighting, "Test.JPG")
 
 
-        # ======Now actually draw the scene======
-        #   Draw the background xor clear the screen
         WIN.fill((110, 170, 140))
+
+        draw_players(players, current_id)
+
 
         # ======Now multiply the lighting information onto the scene======
 
@@ -187,8 +196,6 @@ def main(name):
         for occluder in occluders:
             pygame.draw.lines(WIN, (255, 255, 255), True, occluder.points)
 
-        # redraw window then update the frame
-        draw_players(players, current_id)
         pygame.display.update()
 
     server.disconnect()
@@ -197,13 +204,14 @@ def main(name):
 
 
 # get users name
-while True:
+'''while True:
     name = input("Please enter your name: ")
     if 0 < len(name) < 20:
         break
     else:
         print("Error, this name is not allowed (must be between 1 and 19 characters [inclusive])")
 
-
+'''
+name = "p_"+ str(random.randint(0,100))
 # start game
 main(name)

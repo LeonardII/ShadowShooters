@@ -130,7 +130,7 @@ def threaded_client(conn, _id):
     while True:
         try:
             # Recieve data from client
-            data = conn.recv(32)
+            data = conn.recv(64)
 
             if not data:
                 break
@@ -143,8 +143,10 @@ def threaded_client(conn, _id):
                 split_data = data.split(" ")
                 x = int(split_data[1])
                 y = int(split_data[2])
+                direction = float(split_data[3])
                 players[current_id]["x"] = x
                 players[current_id]["y"] = y
+                players[current_id]["direction"] = direction
 
                 player_collision(players)
 
