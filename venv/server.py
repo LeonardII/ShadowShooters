@@ -1,8 +1,4 @@
-"""
-main server script for running agar.io server
-can handle multiple/infinite connections on the same
-local network
-"""
+
 import contextlib
 with contextlib.redirect_stdout(None):
     import pygame
@@ -116,7 +112,7 @@ def threaded_client(conn, _id):
     # Setup properties for each new player
     color = colors[current_id]
     x, y = get_start_location(players)
-    players[current_id] = {"x": x, "y": y, "color": color, "name": name}  # x, y color, name
+    players[current_id] = {"x": x, "y": y, "color": color, "name": name, "direction": 0.0}  # direction in Radians
 
     # pickle data and send initial info to clients
     conn.send(str.encode(str(current_id)))

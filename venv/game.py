@@ -2,7 +2,7 @@
 # moving around the screen
 
 import contextlib
-
+import math
 with contextlib.redirect_stdout(None):
     import pygame
 from pygame.locals import *
@@ -17,11 +17,12 @@ import PAdLib.shadow as shadow
 pygame.font.init()
 
 # Constants
-PLAYER_RADIUS = 10
-START_VEL = 3
+PLAYER_RADIUS = 13
+vel = 3
 
 W, H = 800, 600
 
+AMBIENT_LIGHT = (30,30,30,255)
 COLORS = [(255, 0, 0), (255, 128, 0), (255, 255, 0), (128, 255, 0), (0, 255, 0), (0, 255, 128), (0, 255, 255),
           (0, 128, 255), (0, 0, 255), (0, 0, 255), (128, 0, 255), (255, 0, 255), (255, 0, 128), (128, 128, 128),
           (0, 0, 0)]
@@ -30,25 +31,82 @@ COLORS = [(255, 0, 0), (255, 128, 0), (255, 255, 0), (128, 255, 0), (0, 255, 0),
 players = {}
 
 
+
+# make window start in top left hand corner
+os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % (0, 30)
+
+# setup pygame window
+WIN = pygame.display.set_mode([W, H])
+pygame.display.set_caption("Networking Test")
+
+#Holds all the lighting information
+surf_lighting = pygame.Surface([W, H])
+
+#Our shadowing object
+shad = shadow.Shadow()
+occluders = [occluder.Occluder([[350,350],[160,150],[400,500]]),occluder.Occluder([[500,200],[450,200],[350,300]])]
+shad.set_occluders(occluders)
+shad.set_radius(200.0)
+
+#Falloff multiplier
+surf_falloff = pygame.image.load("light_falloff100.png")
+#surf_falloff = pygame.transform.scale(surf_falloff,[1800,1800])
+surf_falloff.convert()
+
+
+
 NAME_FONT = pygame.font.SysFont("comicsans", 20)
 # FUNCTIONS
-def draw_player(players):
-    """
-    draws each frame
-    :return: None
-    """
-    #WIN.fill((255, 255, 255))  # fill screen white, to clear old frames
+def draw_players(players, current_id):
+    #draw Player
+    draw_player(players[current_id])
+    shad.set_light_position((players[current_id]["x"], players[current_id]["y"]))
 
-    # draw each player in the list
+    #draw opponents
     for player in players:
         p = players[player]
+        if player != current_id:
+            if is_visible(p):
+                draw_player(p)
 
-        shad.set_light_position((p["x"], p["y"])) #TODO Draw Plaer() and draw_opponents()
+def is_visible(opponent):
+    try:
+        light_val = surf_lighting.get_at((opponent["x"],opponent["y"]))
+        print(AMBIENT_LIGHT, light_val)
+        return light_val != AMBIENT_LIGHT
+    except:
+        print("ERROR mit lightmap")
+        return True
 
-        pygame.draw.circle(WIN, p["color"], (p["x"], p["y"]), PLAYER_RADIUS)
-        # render and draw name for each player
-        text = NAME_FONT.render(p["name"], 1, (0, 0, 0))
-        WIN.blit(text, (p["x"] - text.get_width() / 2, p["y"] - text.get_height() / 2))
+
+def draw_player(player):
+    pygame.draw.circle(WIN, player["color"], (player["x"], player["y"]), PLAYER_RADIUS)
+    pygame.draw.line(WIN, (200,200,200), (player["x"], player["y"]), (player["x"]+math.sin(player["direction"]) * PLAYER_RADIUS ,
+                                                                    (player["y"] + math.sin(player["direction"]) * PLAYER_RADIUS,
+                                                                      player["y"]), PLAYER_RADIUS*0.2)
+    # render and draw name for each player
+    text = NAME_FONT.render(player["name"], 1, (0, 0, 0))
+    WIN.blit(text, (player["x"] - text.get_width() / 2, player["y"] - text.get_height() / 2))
+
+
+def handleInput(player):
+    keys = pygame.key.get_pressed()
+    # movement based on key presses
+    if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+        if player["x"] - vel - PLAYER_RADIUS >= 0:
+            player["x"] = player["x"] - vel
+
+    if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+        if player["x"] + vel + PLAYER_RADIUS <= W:
+            player["x"] = player["x"] + vel
+
+    if keys[pygame.K_UP] or keys[pygame.K_w]:
+        if player["y"] - vel - PLAYER_RADIUS >= 0:
+            player["y"] = player["y"] - vel
+
+    if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+        if player["y"] + vel + PLAYER_RADIUS <= H:
+            player["y"] = player["y"] + vel
 
 
 def main(name):
@@ -72,30 +130,9 @@ def main(name):
     while run:
         clock.tick(60)  # 60 fps max
         player = players[current_id]
-        vel = START_VEL
-        if vel <= 1:
-            vel = 1
-
-        # get key presses
-        keys = pygame.key.get_pressed()
 
         data = ""
-        # movement based on key presses
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            if player["x"] - vel - PLAYER_RADIUS >= 0:
-                player["x"] = player["x"] - vel
-
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            if player["x"] + vel + PLAYER_RADIUS <= W:
-                player["x"] = player["x"] + vel
-
-        if keys[pygame.K_UP] or keys[pygame.K_w]:
-            if player["y"] - vel - PLAYER_RADIUS >= 0:
-                player["y"] = player["y"] - vel
-
-        if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-            if player["y"] + vel + PLAYER_RADIUS <= H:
-                player["y"] = player["y"] + vel
+        handleInput(player)
 
         data = "move " + str(player["x"]) + " " + str(player["y"])
 
@@ -126,9 +163,12 @@ def main(name):
         mask.blit(surf_falloff, (0, 0), special_flags=BLEND_MULT)
 
         #   Ambient light
-        surf_lighting.fill((50, 50, 50))
+        surf_lighting.fill(AMBIENT_LIGHT)
         #   Add the contribution from the shadowed light source
         surf_lighting.blit(mask, draw_pos, special_flags=BLEND_MAX)
+
+        #pygame.image.save(surf_lighting, "Test.JPG")
+
 
         # ======Now actually draw the scene======
         #   Draw the background xor clear the screen
@@ -148,7 +188,7 @@ def main(name):
             pygame.draw.lines(WIN, (255, 255, 255), True, occluder.points)
 
         # redraw window then update the frame
-        draw_player(players)
+        draw_players(players, current_id)
         pygame.display.update()
 
     server.disconnect()
@@ -163,28 +203,6 @@ while True:
         break
     else:
         print("Error, this name is not allowed (must be between 1 and 19 characters [inclusive])")
-
-# make window start in top left hand corner
-os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % (0, 30)
-
-# setup pygame window
-WIN = pygame.display.set_mode([W, H])
-pygame.display.set_caption("Networking Test")
-
-#Holds all the lighting information
-surf_lighting = pygame.Surface([W, H])
-
-#Our shadowing object
-shad = shadow.Shadow()
-occluders = [occluder.Occluder([[350,350],[160,150],[400,500]]),occluder.Occluder([[500,200],[450,200],[350,300]])]
-shad.set_occluders(occluders)
-shad.set_radius(200.0)
-
-#Falloff multiplier
-surf_falloff = pygame.image.load("light_falloff100.png")
-#surf_falloff = pygame.transform.scale(surf_falloff,[1800,1800])
-surf_falloff.convert()
-
 
 
 # start game
