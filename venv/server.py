@@ -8,6 +8,8 @@ import _pickle as pickle
 import time
 import random
 import math
+import Collistion
+
 
 # setup sockets
 S = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -16,7 +18,7 @@ S.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 # Set constants
 PORT = 5555
 
-START_RADIUS = 10
+PLAYER_RADIUS = 15
 
 
 W, H = 800, 600
@@ -38,6 +40,8 @@ print(f"[SERVER] Server Started with local ip {SERVER_IP}")
 
 # dynamic variables
 players = {}
+shots = []
+
 connections = 0
 _id = 0
 colors = [(255, 0, 0), (255, 128, 0), (255, 255, 0), (128, 255, 0), (0, 255, 0), (0, 255, 128), (0, 255, 255),
@@ -45,7 +49,6 @@ colors = [(255, 0, 0), (255, 128, 0), (255, 255, 0), (128, 255, 0), (0, 255, 0),
           (0, 0, 0)]
 
 
-# FUNCTIONS
 def player_collision(players):
     """
     checks for player collision and handles that collision
@@ -60,16 +63,32 @@ def player_collision(players):
             p2 = pygame.Vector2(player2["x"],player2["y"])
             delta = p1 - p2
 
-            if delta.length() < 2*START_RADIUS and delta.length() > 0.01:
+            if delta.length() < 2*PLAYER_RADIUS and delta.length() > 0.01:
                 midpoint = p2 + delta/2
                 dir = delta.normalize()
-                p1 = midpoint + dir * START_RADIUS
-                p2 = midpoint - dir * START_RADIUS
+                p1 = midpoint + dir * PLAYER_RADIUS
+                p2 = midpoint - dir * PLAYER_RADIUS
                 player1["x"] = int(p1.x)
                 player1["y"] = int(p1.y)
                 player2["x"] = int(p2.x)
                 player2["y"] = int(p2.y)
 
+def shots_collision(shots, players, owner_id):
+    hit = []
+    for shot in shots:
+        for player in players:
+            p = players[player]
+            if player != owner_id:
+                shot_dir = pygame.math.Vector2(shot["dir_x"],shot["dir_y"])
+                shot_pos = pygame.math.Vector2(shot["x"],shot["y"])
+                player_pos = pygame.math.Vector2(p["x"],p["y"])
+                if Collistion.intersects_circle(shot_dir,shot_pos,player_pos,PLAYER_RADIUS):
+                    hit.append(player)
+
+    shots.clear()
+    print("Shot hit:", hit)
+    for h in hit:
+        del players[h]
 
 def get_start_location(players):
     """
@@ -85,7 +104,7 @@ def get_start_location(players):
         for player in players:
             p = players[player]
             dis = math.sqrt((x - p["x"]) ** 2 + (y - p["y"]) ** 2)
-            if dis <= START_RADIUS:
+            if dis <= PLAYER_RADIUS:
                 stop = False
                 break
         if stop:
@@ -110,7 +129,7 @@ def threaded_client(conn, _id):
     print("[LOG]", name, "connected to the server.")
 
     # Setup properties for each new player
-    color = colors[current_id]
+    color = colors[current_id % len(colors)]
     x, y = get_start_location(players)
     players[current_id] = {"x": x, "y": y, "color": color, "name": name, "direction": 0.0}  # direction in Radians
 
@@ -136,7 +155,7 @@ def threaded_client(conn, _id):
                 break
 
             data = data.decode("utf-8")
-            # print("[DATA] Recieved", data, "from client id:", current_id)
+            #print("[DATA] Recieved", data, "from client id:", current_id)
 
             # look for specific commands from recieved data
             if data.split(" ")[0] == "move":
@@ -151,6 +170,21 @@ def threaded_client(conn, _id):
                 player_collision(players)
 
                 send_data = pickle.dumps((players))
+
+            if data.split(" ")[0] == "shoot":
+                print(data)
+                split_data = data.split(" ")
+                x = int(split_data[1])
+                y = int(split_data[2])
+                dir_x = float(split_data[3])
+                dir_y = float(split_data[4])
+                owner_id = int(split_data[5])
+                shots.append({"x" : x, "y" : y, "dir_x" : dir_x, "dir_y" : dir_y, "owner_id": owner_id})
+
+                shots_collision(shots, players, owner_id)
+
+                send_data = pickle.dumps((shots))
+
 
             elif data.split(" ")[0] == "id":
                 send_data = str.encode(str(current_id))  # if user requests id then send it
@@ -174,7 +208,10 @@ def threaded_client(conn, _id):
     print("[DISCONNECT] Name:", name, ", Client Id:", current_id, "disconnected")
 
     connections -= 1
-    del players[current_id]  # remove client information from players list
+    try:
+        del players[current_id]  # remove client information from players list
+    except:
+        pass #MAch schöner, wenn man getroffen wird
     conn.close()  # close connection
 
 

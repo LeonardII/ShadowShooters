@@ -17,7 +17,7 @@ import PAdLib.shadow as shadow
 pygame.font.init()
 
 # Constants
-PLAYER_RADIUS = 13
+PLAYER_RADIUS = 15
 vel = 3
 
 W, H = 800, 600
@@ -29,7 +29,8 @@ COLORS = [(255, 128, 0), (255, 255, 0), (255, 0, 0), (128, 255, 0), (0, 255, 0),
 
 # Dynamic Variables
 players = {}
-
+shots = []
+newShots = []
 
 
 # make window start in top left hand corner
@@ -46,7 +47,7 @@ surf_lighting = pygame.Surface([W, H])
 shad = shadow.Shadow()
 occluders = [occluder.Occluder([[350,350],[160,150],[400,500]]),occluder.Occluder([[500,200],[450,200],[350,300]])]
 shad.set_occluders(occluders)
-shad.set_radius(200.0)
+shad.set_radius(300.0)
 
 #Falloff multiplier
 surf_falloff = pygame.image.load("light_falloff100.png")
@@ -88,7 +89,7 @@ def draw_player(player):
     WIN.blit(text, (player["x"] - text.get_width() / 2, player["y"] - text.get_height() / 2))
 
 
-def handleInput(player):
+def handleInput(player, current_id):
 
     for event in pygame.event.get():
         # if user hits red x button close window
@@ -100,8 +101,9 @@ def handleInput(player):
             if event.key == pygame.K_ESCAPE:
                 run = False
 
-        if event.type == pygame.MOUSEBUTTONUP:
-            pass
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            shot_dir = pygame.math.Vector2(math.cos(player["direction"]),math.sin(player["direction"]))
+            newShots.append({"x": player["x"], "y": player["y"], "dir_x": shot_dir.x, "dir_y": shot_dir.y, "owner_id": current_id})
 
     keys = pygame.key.get_pressed()
     # movement based on key presses
@@ -137,66 +139,74 @@ def main(name):
     """
     global players
 
-    # start by connecting to the network
-    server = Network()
-    current_id = server.connect(name)
-    players = server.send("get")
-
-    # setup the clock, limit to 30fps
-    clock = pygame.time.Clock()
-
     run = True
     while run:
-        clock.tick(60)  # 60 fps max
-        player = players[current_id]
+        # start by connecting to the network
+        server = Network()
+        current_id = server.connect(name)
+        players = server.send("get")
 
-        data = ""
-        handleInput(player)
-        data = "move " + str(player["x"]) + " " + str(player["y"]) + " " + str(player["direction"])
+        # setup the clock, limit to 30fps
+        clock = pygame.time.Clock()
 
-        # send data to server and recieve back all players information
-        players = server.send(data)
+        while run:
+            clock.tick(60)  # 60 fps max
+            player = players[current_id]
 
-
-        # ======First compute the lighting information======
-
-        #   Returns a greyscale surface of the shadows and the coordinates to draw it at.
-        #   False tell it to not consider the occluders' interiors to be shadowed.  True
-        #   means that the occluders' interiors are shadowed.  Note that if the light is
-        #   within any occluder, everything is always shadowed.
-        mask, draw_pos = shad.get_mask_and_position(False)
-
-        #   Falloff (just multiplies the black and white mask by the falloff to make it
-        #   look smoother).  Disabling "with_falloff" might make the algorithm more clear.
-        mask.blit(surf_falloff, (0, 0), special_flags=BLEND_MULT)
-
-        #   Ambient light
-        surf_lighting.fill(AMBIENT_LIGHT)
-        #   Add the contribution from the shadowed light source
-        surf_lighting.blit(mask, draw_pos, special_flags=BLEND_MAX)
-
-        #pygame.image.save(surf_lighting, "Test.JPG")
+            data = ""
+            handleInput(player, current_id)
+            data = "move " + str(player["x"]) + " " + str(player["y"]) + " " + str(player["direction"])
+            players = server.send(data)
+            if current_id not in players:
+                break
+            data = ""
+            for newShot in newShots:
+                data += "shoot " + str(newShot["x"]) + " " + str(newShot["y"]) + " " + str(newShot["dir_x"]) + " " + str(newShot["dir_y"]) + " " + str(newShot["owner_id"])
+            if len(data) > 0:
+                shots = server.send(data)
+                newShots.clear()
 
 
-        WIN.fill((110, 170, 140))
 
-        draw_players(players, current_id)
+            # ======First compute the lighting information======
+
+            #   Returns a greyscale surface of the shadows and the coordinates to draw it at.
+            #   False tell it to not consider the occluders' interiors to be shadowed.  True
+            #   means that the occluders' interiors are shadowed.  Note that if the light is
+            #   within any occluder, everything is always shadowed.
+            mask, draw_pos = shad.get_mask_and_position(False)
+
+            #   Falloff (just multiplies the black and white mask by the falloff to make it
+            #   look smoother).  Disabling "with_falloff" might make the algorithm more clear.
+            mask.blit(surf_falloff, (0, 0), special_flags=BLEND_MULT)
+
+            #   Ambient light
+            surf_lighting.fill(AMBIENT_LIGHT)
+            #   Add the contribution from the shadowed light source
+            surf_lighting.blit(mask, draw_pos, special_flags=BLEND_MAX)
+
+            #pygame.image.save(surf_lighting, "Test.JPG")
 
 
-        # ======Now multiply the lighting information onto the scene======
+            WIN.fill((110, 170, 140))
 
-        #   If you comment this out, you'll see the scene without any lighting.
-        #   If you comment out just the special flags part, the lighting surface
-        #   will overwrite the scene, and you'll see the lighting information.
-        WIN.blit(surf_lighting, (0, 0), special_flags=BLEND_MULT)
+            draw_players(players, current_id)
 
-        # ======Post processing======
 
-        #   Hack to outline the occluders.  Don't use this yourself.
-        for occluder in occluders:
-            pygame.draw.lines(WIN, (255, 255, 255), True, occluder.points)
+            # ======Now multiply the lighting information onto the scene======
 
-        pygame.display.update()
+            #   If you comment this out, you'll see the scene without any lighting.
+            #   If you comment out just the special flags part, the lighting surface
+            #   will overwrite the scene, and you'll see the lighting information.
+            WIN.blit(surf_lighting, (0, 0), special_flags=BLEND_MULT)
+
+            # ======Post processing======
+
+            #   Hack to outline the occluders.  Don't use this yourself.
+            for occluder in occluders:
+                pygame.draw.lines(WIN, (255, 255, 255), True, occluder.points)
+
+            pygame.display.update()
 
     server.disconnect()
     pygame.quit()
